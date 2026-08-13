@@ -1,46 +1,49 @@
-# Astro Starter Kit: Basics
+# Kindle Calendar
+
+Static weekly calendar page for e-ink Kindle browsers. Fetches your Google
+Calendar ICS feeds at build time and renders the current week (Mon–Sun) as
+pure HTML — no JavaScript, grayscale, block layout for old WebKit.
+
+## Setup
+
+1. Install: `pnpm install` (requires Node >= 22.12)
+2. Add your calendars:
 
 ```sh
-pnpm create astro@latest -- --template basics
+cp src/calendars.example.json src/calendars.json
 ```
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+Then paste your private Google Calendar ICS links into `src/calendars.json`.
+Each entry is one calendar; the array order maps to the gray left-border
+shades. `src/calendars.json` is gitignored — only the example is committed.
 
-## 🚀 Project Structure
+## Build
 
-Inside of your Astro project, you'll see the following folders and files:
-
-```text
-/
-├── public/
-│   └── favicon.svg
-├── src
-│   ├── assets
-│   │   └── astro.svg
-│   ├── components
-│   │   └── Welcome.astro
-│   ├── layouts
-│   │   └── Layout.astro
-│   └── pages
-│       └── index.astro
-└── package.json
+```sh
+pnpm build
 ```
 
-To learn more about the folder structure of an Astro project, refer to [our guide on project structure](https://docs.astro.build/en/basics/project-structure/).
+Output goes to `dist/index.html`. Build without `src/calendars.json` renders
+a friendly "no calendars configured" page.
 
-## 🧞 Commands
+The week window, "Today" highlight, and day boundaries are pinned to
+`America/Mexico_City` (the `TZ` constant in `src/pages/index.astro`).
 
-All commands are run from the root of the project, from a terminal:
+## Hosting
 
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `pnpm install`             | Installs dependencies                            |
-| `pnpm dev`             | Starts local dev server at `localhost:4321`      |
-| `pnpm build`           | Build your production site to `./dist/`          |
-| `pnpm preview`         | Preview your build locally, before deploying     |
-| `pnpm astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `pnpm astro -- --help` | Get help using the Astro CLI                     |
+- Serve `dist/` anywhere.
+- Send `Cache-Control: no-cache` — old Kindle browsers cache aggressively and
+  will otherwise show a stale week.
+- Open the URL in the Kindle's Experimental Browser.
 
-## 👀 Want to learn more?
+## Daily auto-rebuild
 
-Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+Regenerate each day (e.g. cron/systemd timer) with:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm build
+```
+
+The current week is derived from the build time, so a daily rebuild keeps the
+page fresh.

@@ -1,0 +1,10 @@
+[
+  {
+    "name": "Work",
+    "url": "https://calendar.google.com/calendar/ical/your-work-address%40gmail.com/private-YOURID/basic.ics"
+  },
+  {
+    "name": "Personal",
+    "url": "https://calendar.google.com/calendar/ical/your-personal-address%40gmail.com/private-YOURID/basic.ics"
+  }
+]

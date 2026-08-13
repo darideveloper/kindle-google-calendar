@@ -1,6 +1,9 @@
 # build output
 dist/
 
+# private calendar links
+src/calendars.json
+
 # generated types
 .astro/
 

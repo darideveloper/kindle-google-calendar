@@ -1,11 +1,276 @@
 ---
-import Welcome from '../components/Welcome.astro';
-import Layout from '../layouts/Layout.astro';
+import ical from 'node-ical';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 
-// Welcome to Astro! Wondering what to do next? Check out the Astro documentation at https://docs.astro.build
-// Don't want to use any of this? Delete everything in this file, the `assets`, `components`, and `layouts` directories, and start fresh.
+const TZ = 'America/Mexico_City';
+
+const fmtParts = new Intl.DateTimeFormat('en-US', {
+  timeZone: TZ,
+  hourCycle: 'h23',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+});
+
+function zonedParts(date) {
+  const p = Object.fromEntries(
+    fmtParts
+      .formatToParts(date)
+      .filter((x) => x.type !== 'literal')
+      .map((x) => [x.type, x.value])
+  );
+  return { year: +p.year, month: +p.month, day: +p.day, hour: +p.hour, minute: +p.minute, second: +p.second };
+}
+
+function tzOffsetMs(date) {
+  const p = zonedParts(date);
+  return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - date.getTime();
+}
+
+function wallToDate(y, m, d, h = 0, mi = 0, s = 0) {
+  const w = Date.UTC(y, m - 1, d, h, mi, s);
+  let t = w;
+  for (let i = 0; i < 3; i++) t = w - tzOffsetMs(new Date(t));
+  return new Date(t);
+}
+
+const dayKeyFmt = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
+const dayKey = (date) => dayKeyFmt.format(date);
+
+const headerFmt = new Intl.DateTimeFormat('en-US', {
+  timeZone: TZ,
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric',
+});
+
+function headerLabel(date) {
+  const p = Object.fromEntries(
+    headerFmt
+      .formatToParts(date)
+      .filter((x) => x.type !== 'literal')
+      .map((x) => [x.type, x.value])
+  );
+  return `${p.weekday} ${p.month} ${p.day}`;
+}
+
+const timeFmt = new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+
+const weekdayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+const weekdayFmt = new Intl.DateTimeFormat('en-US', { timeZone: TZ, weekday: 'short' });
+
+const now = new Date();
+const todayParts = zonedParts(now);
+const mondayBack = (weekdayMap[weekdayFmt.format(now)] + 6) % 7;
+const mondayWall = new Date(todayParts.year, todayParts.month - 1, todayParts.day - mondayBack);
+const weekStart = wallToDate(mondayWall.getFullYear(), mondayWall.getMonth() + 1, mondayWall.getDate());
+const weekEnd = new Date(weekStart.getTime() + 7 * 86400000);
+
+let calendars = [];
+let configError = '';
+try {
+  calendars = JSON.parse(readFileSync(path.join(process.cwd(), 'src', 'calendars.json'), 'utf8'));
+  if (!Array.isArray(calendars) || calendars.length === 0) {
+    configError = 'src/calendars.json is empty. Add at least one calendar.';
+  }
+} catch {
+  configError = 'No calendars configured yet. Copy src/calendars.example.json to src/calendars.json and paste your private Google Calendar ICS links.';
+}
+
+const SHADES = ['#000', '#333', '#555', '#777', '#999', '#b3b3b3', '#cfcfcf'];
+const events = [];
+
+for (let i = 0; i < calendars.length; i++) {
+  const { name, url } = calendars[i];
+  let cal;
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 15000);
+  try {
+    cal = await ical.async.fromURL(url, { signal: ac.signal });
+  } catch (err) {
+    console.warn(`[kindle-calendar] skipped calendar "${name}": ${err.message}`);
+    continue;
+  } finally {
+    clearTimeout(timer);
+  }
+  for (const ev of Object.values(cal)) {
+    if (ev.type !== 'VEVENT' || !ev.start) continue;
+    let instances;
+    try {
+      instances = ical.expandRecurringEvent(ev, { from: weekStart, to: weekEnd, expandOngoing: true });
+    } catch (err) {
+      console.warn(`[kindle-calendar] skipped event "${ev.summary}" in "${name}": ${err.message}`);
+      continue;
+    }
+    for (const inst of instances) {
+      events.push({
+        summary: inst.summary,
+        start: inst.start,
+        end: inst.end,
+        allDay: inst.isFullDay,
+        calendarName: name,
+        shade: SHADES[i % SHADES.length],
+      });
+    }
+  }
+}
+
+const days = [];
+for (let d = 0; d < 7; d++) {
+  const date = new Date(weekStart.getTime() + d * 86400000);
+  days.push({ date, key: dayKey(date), label: headerLabel(date), events: [] });
+}
+
+for (const ev of events) {
+  ev.startKey = dayKey(ev.start);
+  let endKey = dayKey(new Date(ev.end.getTime() - 1));
+  if (endKey < ev.startKey) endKey = ev.startKey;
+  for (const day of days) {
+    if (day.key >= ev.startKey && day.key <= endKey) day.events.push(ev);
+  }
+}
+
+for (const day of days) {
+  day.events.sort((a, b) => {
+    if (a.allDay !== b.allDay) return a.allDay ? -1 : 1;
+    return a.start.getTime() - b.start.getTime();
+  });
+}
+
+const todayKey = dayKey(now);
+const weekLabel = `${headerLabel(weekStart)} – ${headerLabel(new Date(weekEnd.getTime() - 1))}, ${zonedParts(new Date(weekEnd.getTime() - 1)).year}`;
+const buildTimeStr = new Intl.DateTimeFormat('en-US', {
+  timeZone: TZ,
+  dateStyle: 'medium',
+  timeStyle: 'short',
+}).format(now);
 ---
 
-<Layout>
-	<Welcome />
-</Layout>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>This Week</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+        font-size: 16px;
+        line-height: 1.35;
+        color: #000;
+        background: #fff;
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 16px;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0 0 8px;
+      }
+      h2 {
+        font-size: 16px;
+        margin: 16px 0 4px;
+        padding-bottom: 2px;
+        border-bottom: 1px solid #ccc;
+      }
+      h2.today {
+        font-weight: bold;
+      }
+      p.free {
+        color: #888;
+        margin: 2px 0 0;
+      }
+      ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      li.event {
+        border-left: 3px solid #000;
+        padding: 2px 0 2px 8px;
+        margin: 4px 0;
+      }
+      .time {
+        display: inline-block;
+        min-width: 52px;
+        color: #555;
+      }
+      .allday {
+        color: #555;
+        font-weight: bold;
+      }
+      .title {
+        font-weight: bold;
+      }
+      .cal {
+        display: block;
+        font-size: 13px;
+        color: #888;
+      }
+      footer {
+        margin-top: 24px;
+        padding-top: 8px;
+        border-top: 1px solid #ccc;
+        color: #888;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    {
+      configError ? (
+        <main>
+          <h1>Kindle Calendar</h1>
+          <p>{configError}</p>
+          <p>
+            Then run <code>pnpm build</code> again.
+          </p>
+        </main>
+      ) : (
+        <main>
+          <h1>This Week — {weekLabel}</h1>
+          {
+            days.map((day) => (
+              <section>
+                <h2 class={day.key === todayKey ? 'today' : ''}>{day.label}{day.key === todayKey ? ' · Today' : ''}</h2>
+                {
+                  day.events.length === 0 ? (
+                    <p class="free">free</p>
+                  ) : (
+                    <ul>
+                      {
+                        day.events.map((ev) => (
+                          <li class="event" style={`border-left-color:${ev.shade}`}>
+                            {
+                              ev.allDay
+                                ? <span class="allday">All day</span>
+                                : day.key === ev.startKey
+                                  ? <span class="time">{timeFmt.format(ev.start)}</span>
+                                  : null
+                            }
+                            <span class="title">{ev.summary}</span>
+                            <span class="cal">{ev.calendarName}</span>
+                          </li>
+                        ))
+                      }
+                    </ul>
+                  )
+                }
+              </section>
+            ))
+          }
+          <footer>Built {buildTimeStr}</footer>
+        </main>
+      )
+    }
+  </body>
+</html>
