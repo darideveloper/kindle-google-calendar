@@ -58,15 +58,10 @@ function headerLabel(date) {
 
 const timeFmt = new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 
-const weekdayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-const weekdayFmt = new Intl.DateTimeFormat('en-US', { timeZone: TZ, weekday: 'short' });
-
 const now = new Date();
 const todayParts = zonedParts(now);
-const mondayBack = (weekdayMap[weekdayFmt.format(now)] + 6) % 7;
-const mondayWall = new Date(todayParts.year, todayParts.month - 1, todayParts.day - mondayBack);
-const weekStart = wallToDate(mondayWall.getFullYear(), mondayWall.getMonth() + 1, mondayWall.getDate());
-const weekEnd = new Date(weekStart.getTime() + 7 * 86400000);
+const start = wallToDate(todayParts.year, todayParts.month, todayParts.day);
+const end = new Date(start.getTime() + 8 * 86400000);
 
 const rawCalendars = process.env.CALENDARS ?? import.meta.env.CALENDARS;
 let calendars = [];
@@ -109,7 +104,7 @@ for (let i = 0; i < calendars.length; i++) {
     if (ev.type !== 'VEVENT' || !ev.start) continue;
     let instances;
     try {
-      instances = ical.expandRecurringEvent(ev, { from: weekStart, to: weekEnd, expandOngoing: true });
+      instances = ical.expandRecurringEvent(ev, { from: start, to: end, expandOngoing: true });
     } catch (err) {
       console.warn(`[kindle-calendar] skipped event "${ev.summary}" in "${name}": ${err.message}`);
       continue;
@@ -128,8 +123,8 @@ for (let i = 0; i < calendars.length; i++) {
 }
 
 const days = [];
-for (let d = 0; d < 7; d++) {
-  const date = new Date(weekStart.getTime() + d * 86400000);
+for (let d = 0; d < 8; d++) {
+  const date = new Date(start.getTime() + d * 86400000);
   days.push({ date, key: dayKey(date), label: headerLabel(date), events: [] });
 }
 
@@ -150,7 +145,7 @@ for (const day of days) {
 }
 
 const todayKey = dayKey(now);
-const weekLabel = `${headerLabel(weekStart)} – ${headerLabel(new Date(weekEnd.getTime() - 1))}, ${zonedParts(new Date(weekEnd.getTime() - 1)).year}`;
+const weekLabel = `${headerLabel(start)} – ${headerLabel(new Date(end.getTime() - 1))}, ${zonedParts(new Date(end.getTime() - 1)).year}`;
 const buildTimeStr = new Intl.DateTimeFormat('en-US', {
   timeZone: TZ,
   dateStyle: 'medium',
@@ -163,7 +158,7 @@ const buildTimeStr = new Intl.DateTimeFormat('en-US', {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>This Week</title>
+    <title>Next 8 Days</title>
     <style>
       html,
       body {
@@ -245,7 +240,7 @@ const buildTimeStr = new Intl.DateTimeFormat('en-US', {
         </main>
       ) : (
         <main>
-          <h1>This Week — {weekLabel}</h1>
+          <h1>Next 8 Days — {weekLabel}</h1>
           {
             days.map((day) => (
               <section>
