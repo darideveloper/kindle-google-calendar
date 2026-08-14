@@ -88,7 +88,12 @@ const SHADES = ['#000', '#333', '#555', '#777', '#999', '#b3b3b3', '#cfcfcf'];
 const events = [];
 
 for (let i = 0; i < calendars.length; i++) {
-  const { name, url } = calendars[i];
+  const c = calendars[i];
+  if (!c || typeof c.name !== 'string' || typeof c.url !== 'string') {
+    console.warn(`[kindle-calendar] skipped invalid calendar entry at index ${i}; expected { name, url }`);
+    continue;
+  }
+  const { name, url } = c;
   let cal;
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), 15000);

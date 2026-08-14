@@ -15,8 +15,13 @@ cp .env.example .env
 
 Then edit `.env` and paste your private Google Calendar ICS links into the
 `CALENDARS` variable — a JSON array of `{ "name", "url" }` objects. The array
-order maps to the gray left-border shades (first calendar = darkest). Both
-`.env` and `.env.production` are gitignored; only `.env.example` is committed.
+order maps to the gray left-border shades (first calendar = darkest). Keep the
+value on a **single line**. All `.env*` files are gitignored; only
+`.env.example` is committed.
+
+> Local env precedence (Vite): real shell env > `.env.production` > `.env` >
+> `.env.local`. Use only one local file — a stale `CALENDARS` in
+> `.env.production` would silently win over `.env`.
 
 ## Build
 
@@ -46,6 +51,9 @@ pnpm install --frozen-lockfile
 pnpm build
 ```
 
-`CALENDARS` must be present in the environment where the build runs (locally
-via `.env`, or set in your deploy platform / Coolify). The current week is
-derived from the build time, so a daily rebuild keeps the page fresh.
+`CALENDARS` is read at **build time**, so it must be present in the
+environment where `pnpm build` runs. For container deploys (Coolify /
+docker-compose), set it as a **build-time** env var, not runtime-only — a
+runtime-only var produces the "no calendars configured" page. Locally it comes
+from `.env`. The current week is derived from the build time, so a daily
+rebuild keeps the page fresh.
