@@ -61,7 +61,7 @@ const timeFmt = new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: '2-digit'
 const now = new Date();
 const todayParts = zonedParts(now);
 const start = wallToDate(todayParts.year, todayParts.month, todayParts.day);
-const end = new Date(start.getTime() + 8 * 86400000);
+const end = new Date(start.getTime() + 7 * 86400000);
 
 const rawCalendars = process.env.CALENDARS ?? import.meta.env.CALENDARS;
 let calendars = [];
@@ -123,7 +123,7 @@ for (let i = 0; i < calendars.length; i++) {
 }
 
 const days = [];
-for (let d = 0; d < 8; d++) {
+for (let d = 0; d < 7; d++) {
   const date = new Date(start.getTime() + d * 86400000);
   days.push({ date, key: dayKey(date), label: headerLabel(date), events: [] });
 }
@@ -145,6 +145,10 @@ for (const day of days) {
 }
 
 const todayKey = dayKey(now);
+const stripRows = [];
+for (let i = 1; i < days.length; i += 3) {
+  stripRows.push(days.slice(i, i + 3));
+}
 const weekLabel = `${headerLabel(start)} – ${headerLabel(new Date(end.getTime() - 1))}, ${zonedParts(new Date(end.getTime() - 1)).year}`;
 const buildTimeStr = new Intl.DateTimeFormat('en-US', {
   timeZone: TZ,
@@ -158,7 +162,7 @@ const buildTimeStr = new Intl.DateTimeFormat('en-US', {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Next 8 Days</title>
+    <title>Next 7 Days</title>
     <style>
       html,
       body {
@@ -171,7 +175,6 @@ const buildTimeStr = new Intl.DateTimeFormat('en-US', {
         line-height: 1.35;
         color: #000;
         background: #fff;
-        max-width: 600px;
         margin: 0 auto;
         padding: 16px;
       }
@@ -208,6 +211,9 @@ const buildTimeStr = new Intl.DateTimeFormat('en-US', {
         color: #555;
       }
       .allday {
+        display: inline-block;
+        min-width: 52px;
+        white-space: nowrap;
         color: #555;
         font-weight: bold;
       }
@@ -218,6 +224,42 @@ const buildTimeStr = new Intl.DateTimeFormat('en-US', {
         display: block;
         font-size: 13px;
         color: #888;
+      }
+      section.strip {
+        margin-top: 16px;
+      }
+      section.strip .dayrow {
+        white-space: nowrap;
+      }
+      section.strip .daycol {
+        display: inline-block;
+        vertical-align: top;
+        width: 33.33%;
+        box-sizing: border-box;
+        padding-right: 12px;
+        white-space: normal;
+      }
+      section.strip h2 {
+        font-size: 14px;
+        margin: 0 0 4px;
+        padding-bottom: 2px;
+        border-bottom: 1px solid #ccc;
+      }
+      section.strip li.sevent {
+        margin: 2px 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      section.strip .stime {
+        display: inline-block;
+        min-width: 44px;
+        font-size: 13px;
+        color: #555;
+      }
+      section.strip .stitle {
+        font-size: 13px;
+        font-weight: bold;
       }
       footer {
         margin-top: 24px;
@@ -240,37 +282,77 @@ const buildTimeStr = new Intl.DateTimeFormat('en-US', {
         </main>
       ) : (
         <main>
-          <h1>Next 8 Days — {weekLabel}</h1>
+          <h1>Next 7 Days — {weekLabel}</h1>
           {
-            days.map((day) => (
-              <section>
-                <h2 class={day.key === todayKey ? 'today' : ''}>{day.label}{day.key === todayKey ? ' · Today' : ''}</h2>
-                {
-                  day.events.length === 0 ? (
-                    <p class="free">free</p>
-                  ) : (
-                    <ul>
-                      {
-                        day.events.map((ev) => (
-                          <li class="event" style={`border-left-color:${ev.shade}`}>
-                            {
-                              ev.allDay
-                                ? <span class="allday">All day</span>
-                                : day.key === ev.startKey
-                                  ? <span class="time">{timeFmt.format(ev.start)}</span>
-                                  : null
-                            }
-                            <span class="title">{ev.summary}</span>
-                            <span class="cal">{ev.calendarName}</span>
-                          </li>
-                        ))
-                      }
-                    </ul>
-                  )
-                }
-              </section>
-            ))
+            (() => {
+              const hero = days[0];
+              return (
+                <section>
+                  <h2 class={hero.key === todayKey ? 'today' : ''}>{hero.label}{hero.key === todayKey ? ' · Today' : ''}</h2>
+                  {
+                    hero.events.length === 0 ? (
+                      <p class="free">free</p>
+                    ) : (
+                      <ul>
+                        {
+                          hero.events.map((ev) => (
+                            <li class="event" style={`border-left-color:${ev.shade}`}>
+                              {
+                                ev.allDay
+                                  ? <span class="allday">All day</span>
+                                  : hero.key === ev.startKey
+                                    ? <span class="time">{timeFmt.format(ev.start)}</span>
+                                    : null
+                              }
+                              <span class="title">{ev.summary}</span>
+                              <span class="cal">{ev.calendarName}</span>
+                            </li>
+                          ))
+                        }
+                      </ul>
+                    )
+                  }
+                </section>
+              );
+            })()
           }
+          <section class="strip">
+            {
+              stripRows.map((row) => (
+                <div class="dayrow">
+                  {
+                    row.map((day) => (
+                      <div class="daycol">
+                        <h2>{day.label}</h2>
+                        {
+                          day.events.length > 0 && (
+                            <ul>
+                              {
+                                day.events.map((ev) => (
+                                  <li class="sevent">
+                                    {
+                                      ev.allDay ? (
+                                        <span class="stitle">{ev.summary}</span>
+                                      ) : (
+                                        <>
+                                          <span class="stime">{timeFmt.format(ev.start)}</span>
+                                          <span class="stitle">{ev.summary}</span>
+                                        </>
+                                      )
+                                    }
+                                  </li>
+                                ))
+                              }
+                            </ul>
+                          )
+                        }
+                      </div>
+                    ))
+                  }
+                </div>
+              ))
+            }
+          </section>
           <footer>Built {buildTimeStr}</footer>
         </main>
       )

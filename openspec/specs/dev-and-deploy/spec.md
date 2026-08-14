@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define the development and deployment workflow for the Kindle calendar: the portless dev server, the Docker image with build-time calendars, Kindle-friendly static serving, and the external daily rebuild.
+
+## Requirements
 
 ### Requirement: Portless dev workflow
 The dev server SHALL run at `https://kindle-calendar.localhost` via portless, listening on the ephemeral port that portless injects via the `PORT` environment variable.
