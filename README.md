@@ -10,12 +10,13 @@ pure HTML — no JavaScript, grayscale, block layout for old WebKit.
 2. Add your calendars:
 
 ```sh
-cp src/calendars.example.json src/calendars.json
+cp .env.example .env
 ```
 
-Then paste your private Google Calendar ICS links into `src/calendars.json`.
-Each entry is one calendar; the array order maps to the gray left-border
-shades. `src/calendars.json` is gitignored — only the example is committed.
+Then edit `.env` and paste your private Google Calendar ICS links into the
+`CALENDARS` variable — a JSON array of `{ "name", "url" }` objects. The array
+order maps to the gray left-border shades (first calendar = darkest). Both
+`.env` and `.env.production` are gitignored; only `.env.example` is committed.
 
 ## Build
 
@@ -23,8 +24,8 @@ shades. `src/calendars.json` is gitignored — only the example is committed.
 pnpm build
 ```
 
-Output goes to `dist/index.html`. Build without `src/calendars.json` renders
-a friendly "no calendars configured" page.
+Output goes to `dist/index.html`. Build without `CALENDARS` set renders a
+friendly "no calendars configured" page.
 
 The week window, "Today" highlight, and day boundaries are pinned to
 `America/Mexico_City` (the `TZ` constant in `src/pages/index.astro`).
@@ -38,12 +39,13 @@ The week window, "Today" highlight, and day boundaries are pinned to
 
 ## Daily auto-rebuild
 
-Regenerate each day (e.g. cron/systemd timer) with:
+Regenerate each day (e.g. cron/systemd timer, or your n8n schedule) with:
 
 ```sh
 pnpm install --frozen-lockfile
 pnpm build
 ```
 
-The current week is derived from the build time, so a daily rebuild keeps the
-page fresh.
+`CALENDARS` must be present in the environment where the build runs (locally
+via `.env`, or set in your deploy platform / Coolify). The current week is
+derived from the build time, so a daily rebuild keeps the page fresh.
