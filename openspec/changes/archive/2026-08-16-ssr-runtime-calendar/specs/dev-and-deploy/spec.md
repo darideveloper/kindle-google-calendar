@@ -1,23 +1,4 @@
-## Purpose
-
-Define the development and deployment workflow for the Kindle calendar: the portless dev server, the runtime Node server deployment, runtime environment configuration, and Kindle-friendly serving tuned for the Kindle's aggressive browser cache.
-
-## Requirements
-
-### Requirement: Portless dev workflow
-The dev server SHALL run at `https://kindle-calendar.localhost` via portless, listening on the ephemeral port that portless injects via the `PORT` environment variable.
-
-#### Scenario: Dev server starts under portless
-- **WHEN** the developer runs `pnpm dev` with portless installed and the route registered
-- **THEN** the site is served with HTTPS at `https://kindle-calendar.localhost`
-
-#### Scenario: Fallback when portless is absent
-- **WHEN** `pnpm dev` runs outside portless so `PORT` is unset
-- **THEN** the dev server listens on the default port 4321
-
-#### Scenario: Assigned port is already in use
-- **WHEN** portless injects a `PORT` value that is already taken by another process
-- **THEN** the dev server fails fast with an error instead of silently choosing a different port
+## ADDED Requirements
 
 ### Requirement: Runtime Node server deployment
 The Docker image SHALL run the Astro Node standalone server, serving both HTML and hashed assets at request time.
@@ -37,6 +18,8 @@ The Docker image SHALL run the Astro Node standalone server, serving both HTML a
 - **WHEN** the `CALENDARS` runtime variable is updated and the container is restarted
 - **THEN** the next request renders the updated calendars with no image rebuild
 
+## MODIFIED Requirements
+
 ### Requirement: Kindle-friendly static serving
 The server SHALL serve the page with caching tuned for the Kindle's aggressive browser cache.
 
@@ -47,3 +30,15 @@ The server SHALL serve the page with caching tuned for the Kindle's aggressive b
 #### Scenario: No PWA required
 - **WHEN** the server is configured
 - **THEN** no service worker, manifest, or offline fallback is configured
+
+## REMOVED Requirements
+
+### Requirement: Docker image with build-time calendars
+**Reason**: Calendars are now fetched and rendered at request time; baking them into the image at build time is no longer needed.
+
+**Migration**: Set `CALENDARS` as a runtime environment variable on the container. Rebuilds are no longer required for calendar changes.
+
+### Requirement: External daily rebuild
+**Reason**: The page now reflects the current week on every request, so scheduled rebuilds are obsolete.
+
+**Migration**: Remove the n8n cron job and Coolify build hook. No replacement is needed.
