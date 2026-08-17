@@ -1,160 +1,9 @@
 ---
-import ical from 'node-ical';
+import { getWeek, timeFmt } from '../lib/calendar';
 
-const TZ = 'America/Mexico_City';
+Astro.response.headers.set('Cache-Control', 'no-cache');
 
-const fmtParts = new Intl.DateTimeFormat('en-US', {
-  timeZone: TZ,
-  hourCycle: 'h23',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit',
-});
-
-function zonedParts(date) {
-  const p = Object.fromEntries(
-    fmtParts
-      .formatToParts(date)
-      .filter((x) => x.type !== 'literal')
-      .map((x) => [x.type, x.value])
-  );
-  return { year: +p.year, month: +p.month, day: +p.day, hour: +p.hour, minute: +p.minute, second: +p.second };
-}
-
-function tzOffsetMs(date) {
-  const p = zonedParts(date);
-  return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - date.getTime();
-}
-
-function wallToDate(y, m, d, h = 0, mi = 0, s = 0) {
-  const w = Date.UTC(y, m - 1, d, h, mi, s);
-  let t = w;
-  for (let i = 0; i < 3; i++) t = w - tzOffsetMs(new Date(t));
-  return new Date(t);
-}
-
-const dayKeyFmt = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
-const dayKey = (date) => dayKeyFmt.format(date);
-
-const headerFmt = new Intl.DateTimeFormat('en-US', {
-  timeZone: TZ,
-  weekday: 'short',
-  month: 'short',
-  day: 'numeric',
-});
-
-function headerLabel(date) {
-  const p = Object.fromEntries(
-    headerFmt
-      .formatToParts(date)
-      .filter((x) => x.type !== 'literal')
-      .map((x) => [x.type, x.value])
-  );
-  return `${p.weekday} ${p.month} ${p.day}`;
-}
-
-const timeFmt = new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-
-const now = new Date();
-const todayParts = zonedParts(now);
-const start = wallToDate(todayParts.year, todayParts.month, todayParts.day);
-const end = new Date(start.getTime() + 7 * 86400000);
-
-const rawCalendars = process.env.CALENDARS ?? import.meta.env.CALENDARS;
-let calendars = [];
-let configError = '';
-if (!rawCalendars) {
-  configError = 'No calendars configured. Set the CALENDARS environment variable (see .env.example).';
-} else {
-  try {
-    calendars = JSON.parse(rawCalendars);
-    if (!Array.isArray(calendars) || calendars.length === 0) {
-      configError = 'CALENDARS is empty. Add at least one { name, url } calendar.';
-    }
-  } catch {
-    configError = 'CALENDARS is not valid JSON. Expected an array of { name, url } objects.';
-  }
-}
-
-const SHADES = ['#000', '#333', '#555', '#777', '#999', '#b3b3b3', '#cfcfcf'];
-const events = [];
-
-for (let i = 0; i < calendars.length; i++) {
-  const c = calendars[i];
-  if (!c || typeof c.name !== 'string' || typeof c.url !== 'string') {
-    console.warn(`[kindle-calendar] skipped invalid calendar entry at index ${i}; expected { name, url }`);
-    continue;
-  }
-  const { name, url } = c;
-  let cal;
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), 15000);
-  try {
-    cal = await ical.async.fromURL(url, { signal: ac.signal });
-  } catch (err) {
-    console.warn(`[kindle-calendar] skipped calendar "${name}": ${err.message}`);
-    continue;
-  } finally {
-    clearTimeout(timer);
-  }
-  for (const ev of Object.values(cal)) {
-    if (ev.type !== 'VEVENT' || !ev.start) continue;
-    let instances;
-    try {
-      instances = ical.expandRecurringEvent(ev, { from: start, to: end, expandOngoing: true });
-    } catch (err) {
-      console.warn(`[kindle-calendar] skipped event "${ev.summary}" in "${name}": ${err.message}`);
-      continue;
-    }
-    for (const inst of instances) {
-      events.push({
-        summary: inst.summary,
-        start: inst.start,
-        end: inst.end,
-        allDay: inst.isFullDay,
-        calendarName: name,
-        shade: SHADES[i % SHADES.length],
-      });
-    }
-  }
-}
-
-const days = [];
-for (let d = 0; d < 7; d++) {
-  const date = new Date(start.getTime() + d * 86400000);
-  days.push({ date, key: dayKey(date), label: headerLabel(date), events: [] });
-}
-
-for (const ev of events) {
-  ev.startKey = dayKey(ev.start);
-  let endKey = dayKey(new Date(ev.end.getTime() - 1));
-  if (endKey < ev.startKey) endKey = ev.startKey;
-  for (const day of days) {
-    if (day.key >= ev.startKey && day.key <= endKey) day.events.push(ev);
-  }
-}
-
-for (const day of days) {
-  day.events.sort((a, b) => {
-    if (a.allDay !== b.allDay) return a.allDay ? -1 : 1;
-    return a.start.getTime() - b.start.getTime();
-  });
-}
-
-const todayKey = dayKey(now);
-const stripRows = [];
-for (let i = 1; i < days.length; i += 3) {
-  stripRows.push(days.slice(i, i + 3));
-}
-const weekLabel = `${headerLabel(start)} – ${headerLabel(new Date(end.getTime() - 1))}, ${zonedParts(new Date(end.getTime() - 1)).year}`;
-const buildTimeStr = new Intl.DateTimeFormat('en-US', {
-  timeZone: TZ,
-  dateStyle: 'medium',
-  timeStyle: 'short',
-}).format(now);
+const { configError, days, todayKey, stripRows, weekLabel, updatedTimeStr } = await getWeek();
 ---
 
 <!doctype html>
@@ -277,7 +126,7 @@ const buildTimeStr = new Intl.DateTimeFormat('en-US', {
           <h1>Kindle Calendar</h1>
           <p>{configError}</p>
           <p>
-            Then run <code>pnpm build</code> again.
+            Then set the <code>CALENDARS</code> environment variable on the server (runtime, not build) and restart the container.
           </p>
         </main>
       ) : (
@@ -353,7 +202,7 @@ const buildTimeStr = new Intl.DateTimeFormat('en-US', {
               ))
             }
           </section>
-          <footer>Built {buildTimeStr}</footer>
+          <footer>Updated {updatedTimeStr}</footer>
         </main>
       )
     }

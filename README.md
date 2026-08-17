@@ -1,8 +1,9 @@
 # Kindle Calendar
 
-Static weekly calendar page for e-ink Kindle browsers. Fetches your Google
-Calendar ICS feeds at build time and renders the current week (Mon–Sun) as
-pure HTML — no JavaScript, grayscale, block layout for old WebKit.
+Server-rendered weekly calendar page for e-ink Kindle browsers. Fetches your
+Google Calendar ICS feeds **at request time** and renders a rolling 7-day
+window (starting today) as pure HTML — no JavaScript, grayscale, block layout
+for old WebKit. No rebuild needed to keep the data fresh.
 
 ## Setup
 
@@ -20,21 +21,26 @@ order maps to the gray left-border shades (first calendar = darkest). Keep the
 value on a **single line**. All `.env*` files are gitignored; only
 `.env.example` is committed.
 
-> Local env precedence (Vite): real shell env > `.env.production` > `.env` >
-> `.env.local`. Use only one local file — a stale `CALENDARS` in
-> `.env.production` would silently win over `.env`.
+> `CALENDARS` is read at **request time** from `process.env`, so configuration
+> changes take effect by restarting the server — no rebuild. In dev (`pnpm dev`)
+> the value comes from `.env` via `import.meta.env`; in production set it in the
+> runtime environment.
 
-## Build
+## Build & run
 
 ```sh
 pnpm build
+pnpm start    # node ./dist/server/entry.mjs
 ```
 
-Output goes to `dist/index.html`. Build without `CALENDARS` set renders a
-friendly "no calendars configured" page.
+`pnpm build` emits a standalone server at `dist/server/entry.mjs` plus static
+assets in `dist/client/`. Running without `CALENDARS` set renders a friendly
+"no calendars configured" page.
 
-The week window, "Today" highlight, and day boundaries are pinned to
-`America/Mexico_City` (the `TZ` constant in `src/pages/index.astro`).
+Calendar data is cached in memory for 10 minutes (keyed by the current day), so
+repeated requests don't re-fetch every ICS feed; the footer shows when content
+was last refreshed. The window, "Today" highlight, and day boundaries are
+pinned to `America/Mexico_City` (the `TZ` constant in `src/lib/calendar.ts`).
 
 ## Dev (portless)
 
@@ -54,42 +60,33 @@ pnpm dev        # https://kindle-calendar.localhost (port 443, or 1355 if privil
 
 ## Docker deployment
 
-Build the image with `CALENDARS` as a **build-time** arg:
+Build the image and run it with `CALENDARS` as a **runtime** environment
+variable:
 
 ```sh
-docker build \
-  --build-arg "CALENDARS=[{\"name\":\"Work\",\"url\":\"https://.../basic.ics\"}]" \
-  -t kindle-calendar:latest .
+docker build -t kindle-calendar:latest .
+docker run -d \
+  -e "CALENDARS=[{\"name\":\"Work\",\"url\":\"https://.../basic.ics\"}]" \
+  -p 8080:4321 \
+  kindle-calendar:latest
 ```
 
-Run it:
-
-```sh
-docker run -d -p 8080:80 kindle-calendar:latest
-```
-
-- Two-stage build: `node:lts-alpine` builds `dist/`, `nginx:alpine` serves it.
+- Three-stage build: `node:lts-alpine` builds the SSR output, a `deps` stage
+  installs production dependencies only, and a `runtime` stage runs the
+  standalone server (`node ./dist/server/entry.mjs`). `CALENDARS` is **not** a
+  build arg — set it as a runtime env var.
+- The server listens on port `4321` by default (`HOST`/`PORT` env vars).
 - HTML is served with `Cache-Control: no-cache` (Kindle browsers cache
   aggressively); hashed `/_astro/*` assets get an immutable 1-year cache.
-- The build stage fetches Google Calendar ICS feeds, so it needs outbound HTTPS.
+- The server fetches Google Calendar ICS feeds on demand, so it needs outbound
+  HTTPS.
 
-## Daily auto-rebuild
+## Hosting (Coolify / any Docker host)
 
-The current week is baked in at **build time**, so the container must be
-rebuilt daily to stay fresh. With Coolify, set an n8n cron job that fires the
-Coolify **build hook** on a schedule — Coolify rebuilds the image using the
-`CALENDARS` value stored as a build-time env var. No scheduling code lives in
-the repo; it is purely external (n8n → Coolify webhook).
-
-`CALENDARS` is read at **build time**, so it must be present in the
-environment where `pnpm build` runs. For container deploys (Coolify /
-docker-compose), set it as a **build-time** env var, not runtime-only — a
-runtime-only var produces the "no calendars configured" page. Locally it comes
-from `.env`.
-
-## Hosting
-
-- Serve `dist/` anywhere (or the Docker image — see above).
-- Send `Cache-Control: no-cache` — old Kindle browsers cache aggressively and
-  will otherwise show a stale week.
+- Point Coolify at the Git repo with build pack **Dockerfile**.
+- Set `CALENDARS` as a **runtime** environment variable (not build-time) so
+  calendar changes take effect by editing the env and restarting the app — no
+  rebuild, no redeploy.
+- No scheduled rebuilds are needed: the page always reflects the current
+  window at request time.
 - Open the URL in the Kindle's Experimental Browser.

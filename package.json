@@ -9,10 +9,11 @@
   "scripts": {
     "dev": "portless kindle-calendar pnpm astro dev",
     "build": "astro build",
-    "preview": "astro preview",
+    "start": "node ./dist/server/entry.mjs",
     "astro": "astro"
   },
   "dependencies": {
+    "@astrojs/node": "^11.1.2",
     "astro": "^7.2.2",
     "node-ical": "^0.27.1"
   },
